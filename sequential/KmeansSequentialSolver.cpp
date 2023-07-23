@@ -92,12 +92,11 @@ void KmeansSequentialSolver::solve(bool printConsole) {
             }
         }
         currentSSE = currentSSE/numPoints;
-
-        //updating iteration
-        iteration++;
         if(printConsole){
             std::cout <<"Current SSE = " << currentSSE << "" << std::endl;
         }
+        //updating iteration
+        iteration++;
     }
 }
 

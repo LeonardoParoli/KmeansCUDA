@@ -9,12 +9,12 @@
 #include "ParallelCUDA/KmeansParallelCUDASolver.h"
 
 int main(){
-    int numPoints = 1000;
-    int numClusters = 15;
+    int numPoints = 500000;
+    int numClusters = 10;
     double coordinateRange = 1000;
     double clusterRadius = 250;
     bool printResults = false;
-    bool printConsole = true;
+    bool printConsole = false;
     bool parallelCUDA = true;
 
     //CUDA parameters
@@ -27,11 +27,12 @@ int main(){
     Point* realCentroids = initializer.getRealCentroids();
 
     std::string currentFilePath(__FILE__);
-    std::size_t found = currentFilePath.find_last_of("/");
+    std::size_t found = currentFilePath.find_last_of("\\");
     std::string folderPath = currentFilePath.substr(0, found + 1);
     std::string filePath;
     if (printResults) {
         filePath = folderPath + "/Initialization/initial_points.txt";
+
         std::ofstream outputInitialPointsFile(filePath);
         if (outputInitialPointsFile.is_open()) {
             for (int i = 0; i < numPoints; i++) {
@@ -113,14 +114,14 @@ int main(){
         startParallelCUDA = std::chrono::high_resolution_clock::now();
         CUDAsolver.solve(printConsole);
         endParallelCUDA = std::chrono::high_resolution_clock::now();
-        Kluster* ompClusters;
+        Kluster* CUDAClusters = CUDAsolver.getClusters();
 
-        if (printResults) {
-            filePath = folderPath + "/Results/ParallelOMP/clustered_points.txt";
+        if (printResults && parallelCUDA) {
+            filePath = folderPath + "/Results/ParallelCUDA/clustered_points.txt";
             std::ofstream outputResultClustersFile(filePath);
             if (outputResultClustersFile.is_open()) {
                 for (int i = 0; i < numClusters; i++) {
-                    Kluster cluster = ompClusters[i];
+                    Kluster cluster = CUDAClusters[i];
                     Point centroid = *cluster.getCentroid();
                     outputResultClustersFile << "Cluster " << i << "{" << std::endl;
                     outputResultClustersFile << "[" << centroid.x << "," << centroid.y << "," << centroid.z << "]"
@@ -141,15 +142,14 @@ int main(){
     }
 
     auto durationSequential = std::chrono::duration_cast<std::chrono::milliseconds>(endSequential - startSequential).count();
-    long long int durationParallelOMP;
+    long long int durationParallelCUDA;
     if (parallelCUDA) {
-        durationParallelOMP = std::chrono::duration_cast<std::chrono::milliseconds>(endParallelCUDA - startParallelCUDA).count();
+        durationParallelCUDA = std::chrono::duration_cast<std::chrono::milliseconds>(endParallelCUDA - startParallelCUDA).count();
     }
     std::cout << std::fixed << std::setprecision(4) << "Sequential Execution time: " << durationSequential << " milliseconds" << std::endl;
     if (parallelCUDA) {
-        std::cout << std::fixed << std::setprecision(4) << "Parallel Execution time: " << durationParallelOMP << " milliseconds" << std::endl;
-        std::cout << std::fixed << std::setprecision(4) << "Speedup: " << double(durationSequential) / double(durationParallelOMP) << std::endl;
+        std::cout << std::fixed << std::setprecision(4) << "Parallel Execution time: " << durationParallelCUDA << " milliseconds" << std::endl;
+        std::cout << std::fixed << std::setprecision(4) << "Speedup: " << double(durationSequential) / double(durationParallelCUDA) << std::endl;
     }
-
     return 0;
 }

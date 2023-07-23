@@ -1,7 +1,6 @@
 #include <iostream>
 #include <random>
 #include "KmeansParallelCUDASolver.h"
-#include <cfloat>
 #include "KmeansCUDA.cuh"
 
 Point *KmeansParallelCUDASolver::getPoints() {
@@ -37,36 +36,14 @@ void KmeansParallelCUDASolver::solve(bool printConsole) {
 
     //Computing Max SSE
     float maxSSE = 0;
-    Point* d_points;
-    Point* d_currentCentroids;
-    float* d_maxSSE;
-
-    calculateMaxSSE(d_points,points, d_currentCentroids,selectedCentroids, d_maxSSE, numPoints, numClusters,gridSize,blockSize,maxSSE);
-
+    calculateMaxSSE(points, selectedCentroids, numPoints,numClusters,gridSize,blockSize,maxSSE);
     maxSSE= maxSSE/numPoints;
     if (printConsole) {
         std::cout << "Max SSE = " << maxSSE << "" << std::endl;
     }
 
     //Starting Kmeans clustering
-    // TODO bring this down into the kmeansIteration to avoid having to cudamalloc everytime
-    double currentSSE = maxSSE;
-    double previousSSE = 1e20;
-    int iteration = 0;
-    auto *newCentroids = new Point[numClusters];
-    for(int i = 0; i < numClusters; i++){
-        newCentroids[i] = selectedCentroids[i];
-    }
-
-    while ((previousSSE - currentSSE) >= 0.01 && iteration < 10000) {
-        Point* d_iterationPoints;
-        Point* d_iterationCentroids;
-        previousSSE = currentSSE;
-        kmeansIteration(d_iterationPoints,points,numPoints,d_iterationCentroids,newCentroids,numClusters);
-        iteration++;
-    }
-
-    std::cout << "FINISHED FINISHED FINISHED" << std::endl;
+    clusters = kmeansCycle(points,numPoints,selectedCentroids,numClusters,maxSSE,printConsole);
 }
 
 Point *KmeansParallelCUDASolver::getSelectedCentroids() {

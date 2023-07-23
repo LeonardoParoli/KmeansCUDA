@@ -5,7 +5,7 @@ find_package(CUDAToolkit)
 set(CMAKE_CUDA_STANDARD 17)
 
 add_executable(KmeansCUDA
-        main.cu
+        main.cpp
         KmeansInitializer.cpp
         KmeansInitializer.cpp
         Point.h
