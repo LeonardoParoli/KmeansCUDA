@@ -3,6 +3,7 @@ project(KmeansCUDA LANGUAGES CUDA CXX)
 
 find_package(CUDAToolkit)
 set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_ARCHITECTURES 86)
 
 add_executable(KmeansCUDA
         main.cpp

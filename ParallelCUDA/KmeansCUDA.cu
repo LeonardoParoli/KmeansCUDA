@@ -3,17 +3,15 @@
 #include <random>
 #include "../Point.h"
 
-
 static void CheckCudaErrorAux(const char*, unsigned, const char*, cudaError_t);
-
 static void CheckCudaErrorAux(const char* file, unsigned line, const char* statement, cudaError_t err) {
     if (err == cudaSuccess)
         return;
     std::cerr << statement << " returned " << cudaGetErrorString(err) << "(" << err << ") at " << file << ":" << line << std::endl;
     exit(1);
 }
-
 #define CUDA_CHECK_ERROR(value) CheckCudaErrorAux(__FILE__,__LINE__, #value, value)
+
 __host__ void calculateMaxSSE(Point*points, Point* selectedCentroids, int numPoints, int numClusters, int gridSize, int blockSize, float& maxSSE) {
     Point* d_points;
     Point* d_currentCentroids;
@@ -98,60 +96,38 @@ __host__ Kluster* kmeansCycle(Point* points,int numPoints,Point* selectedCentroi
         CUDA_CHECK_ERROR(cudaMalloc((void **) &d_assignments, numPoints * sizeof(int)));
         assignPointsToClusters<<<gridSize, blockSize>>>(d_points, numPoints, numClusters, d_currentCentroids, d_assignments);
         CUDA_CHECK_ERROR(cudaMemcpy(assignments, d_assignments, numPoints * sizeof(int), cudaMemcpyDeviceToHost));
-        CUDA_CHECK_ERROR(cudaFree(d_assignments));
 
-        //Update centroids
         int *clusterSizes = new int[numClusters];
         for(int i=0; i < numClusters; i++){
             clusterSizes[i]=0;
         }
-        for(int j=0; j < numPoints; j++){
-            clusterSizes[assignments[j]]++;
-        }
-        for(int i = 0; i < numClusters; i++) {
-            if (clusterSizes[i] == 0) {
-                std::random_device rd;
-                std::mt19937 rng(rd());
-                std::uniform_real_distribution<double> dist(0.0, 1000.0);
-                newCentroids[i].x = dist(rng);
-                newCentroids[i].y = dist(rng);
-                newCentroids[i].z = dist(rng);
-            }else{
-                newCentroids[i] = {0.0, 0.0, 0.0};
-            }
-        }
-        for(int i = 0; i < numPoints; i++){
-            Point point = points[i];
-            int assignment = assignments[i];
-            newCentroids[assignment].x += point.x;
-            newCentroids[assignment].y += point.y;
-            newCentroids[assignment].z += point.z;
-        }
-        for(int i = 0; i < numClusters; i++){
-            newCentroids[i].x = newCentroids[i].x / clusterSizes[i];
-            newCentroids[i].y = newCentroids[i].y / clusterSizes[i];
-            newCentroids[i].z = newCentroids[i].z / clusterSizes[i];
-        }
+        int* d_clusterSizes;
+        CUDA_CHECK_ERROR(cudaMalloc((void**)&d_clusterSizes, numClusters * sizeof(int)));
+        CUDA_CHECK_ERROR(cudaMemcpy(d_clusterSizes, clusterSizes, numClusters * sizeof(int), cudaMemcpyHostToDevice));
+        calculateClusterSizesKernel<<<gridSize, blockSize>>>(numPoints, d_assignments, d_clusterSizes);
+        calculateNewCentroidsKernel<<<gridSize, blockSize>>>(numPoints, d_points, d_assignments, d_currentCentroids, d_clusterSizes);
+        calculateFinalCentroidsKernel<<<gridSize, blockSize>>>(d_currentCentroids, d_clusterSizes, numClusters);
+        CUDA_CHECK_ERROR(cudaMemcpy(clusterSizes, d_clusterSizes, numClusters * sizeof(int), cudaMemcpyDeviceToHost));
+        CUDA_CHECK_ERROR(cudaFree(d_clusterSizes));
 
-        //Update currentSSE
+        //Update CurrentSSE
         currentSSE = 0.0;
-        for(int i = 0; i < numPoints; i++){
-            int assignment = assignments[i];
-            Point point = points[i];
-            Point assignedCentroid = newCentroids[assignment];
-            double distance = 0;
-            distance += pow(point.x - assignedCentroid.x, 2);
-            distance += pow(point.y - assignedCentroid.y, 2);
-            distance += pow(point.z - assignedCentroid.z, 2);
-            currentSSE += distance;
-        }
-        currentSSE = currentSSE/numPoints;
+        double* d_currentSSE;
+        CUDA_CHECK_ERROR(cudaMalloc((void**)&d_currentSSE, sizeof(double)));
+        double hostSSE = 0.0;
+        CUDA_CHECK_ERROR(cudaMemcpy(d_currentSSE, &hostSSE, sizeof(double), cudaMemcpyHostToDevice));
+        calculateSSEKernel<<<gridSize, blockSize>>>(d_points, numPoints, d_assignments, d_currentCentroids, d_currentSSE);
+        CUDA_CHECK_ERROR(cudaMemcpy(&hostSSE, d_currentSSE, sizeof(double), cudaMemcpyDeviceToHost));
+        CUDA_CHECK_ERROR(cudaFree(d_currentSSE));
+        currentSSE = hostSSE/numPoints;
         if(printConsole){
             std::cout <<"Current SSE = " << currentSSE << "" << std::endl;
         }
         //update iteration
+        CUDA_CHECK_ERROR(cudaFree(d_assignments));
         iteration++;
     }
+
     CUDA_CHECK_ERROR(cudaFree(d_points));
     CUDA_CHECK_ERROR(cudaFree(d_currentCentroids));
 
@@ -190,5 +166,47 @@ __global__ void assignPointsToClusters(Point* d_points, int numPoints, int numCl
         }
 
         d_assignments[i] = nearestCluster;
+    }
+}
+
+__global__ void calculateSSEKernel(Point* points, int numPoints, int* assignments, Point* newCentroids, double* currentSSE) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx < numPoints) {
+        int assignment = assignments[idx];
+        Point point = points[idx];
+        Point assignedCentroid = newCentroids[assignment];
+        double distance = 0;
+        distance += pow(point.x - assignedCentroid.x, 2);
+        distance += pow(point.y - assignedCentroid.y, 2);
+        distance += pow(point.z - assignedCentroid.z, 2);
+
+        atomicAdd(currentSSE, distance);
+    }
+}
+
+__global__ void calculateClusterSizesKernel(int numPoints, const int* assignments, int* clusterSizes) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < numPoints) {
+        atomicAdd(&clusterSizes[assignments[idx]], 1);
+    }
+}
+
+__global__ void calculateNewCentroidsKernel(int numPoints, Point* points, const int* assignments, Point* newCentroids, int* clusterSizes) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < numPoints) {
+        int assignment = assignments[idx];
+        atomicAdd(&newCentroids[assignment].x, points[idx].x);
+        atomicAdd(&newCentroids[assignment].y, points[idx].y);
+        atomicAdd(&newCentroids[assignment].z, points[idx].z);
+    }
+}
+
+__global__ void calculateFinalCentroidsKernel(Point* newCentroids, const int* clusterSizes, int numClusters) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < numClusters && clusterSizes[idx] > 0) {
+        newCentroids[idx].x /= clusterSizes[idx];
+        newCentroids[idx].y /= clusterSizes[idx];
+        newCentroids[idx].z /= clusterSizes[idx];
     }
 }
