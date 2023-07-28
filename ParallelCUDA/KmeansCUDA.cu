@@ -1,7 +1,6 @@
 #include "KmeansCUDA.cuh"
 #include <iostream>
 #include <random>
-#include "../Point.h"
 
 static void CheckCudaErrorAux(const char*, unsigned, const char*, cudaError_t);
 static void CheckCudaErrorAux(const char* file, unsigned line, const char* statement, cudaError_t err) {
@@ -210,3 +209,40 @@ __global__ void calculateFinalCentroidsKernel(Point* newCentroids, const int* cl
         newCentroids[idx].z /= clusterSizes[idx];
     }
 }
+
+__global__ void vectorAdd(int* a, int* b, int* c, int n) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid < n) {
+        c[tid] = a[tid] + b[tid];
+    }
+}
+
+__host__ void kickstartGPUCUDA(){
+    int n =1000;
+    int size = n * sizeof(int);
+    int* h_a, * h_b, * h_c;
+    int* d_a, * d_b, * d_c;
+    h_a = (int*)malloc(size);
+    h_b = (int*)malloc(size);
+    h_c = (int*)malloc(size);
+    cudaMalloc(&d_a, size);
+    cudaMalloc(&d_b, size);
+    cudaMalloc(&d_c, size);
+    for (int i = 0; i < n; ++i) {
+        h_a[i] = i;
+        h_b[i] = 2 * i;
+    }
+    cudaMemcpy(d_a, h_a, size, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, h_b, size, cudaMemcpyHostToDevice);
+    int block_size = 256;
+    int grid_size = (n + block_size - 1) / block_size;
+    vectorAdd<<<grid_size, block_size>>>(d_a, d_b, d_c, n);
+    cudaMemcpy(h_c, d_c, size, cudaMemcpyDeviceToHost);
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cudaFree(d_c);
+    free(h_a);
+    free(h_b);
+    free(h_c);
+}
+

@@ -9,7 +9,7 @@
 #include "ParallelCUDA/KmeansParallelCUDASolver.h"
 
 int main(){
-    int numPoints = 100000;
+    int numPoints = 1000;
     int numClusters = 15;
     double coordinateRange = 1000;
     double clusterRadius = 250;
@@ -111,6 +111,7 @@ int main(){
     if (parallelCUDA) {
         std::cout << "Running Parallel CUDA K-Means " << std::endl;
         KmeansParallelCUDASolver CUDAsolver = KmeansParallelCUDASolver(points,numPoints,numClusters,selectedCentroids);
+        CUDAsolver.kickstartGPU();
         startParallelCUDA = std::chrono::high_resolution_clock::now();
         CUDAsolver.solve(printConsole);
         endParallelCUDA = std::chrono::high_resolution_clock::now();

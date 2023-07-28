@@ -21,6 +21,7 @@ class KmeansParallelCUDASolver {
         Point *getPoints();
         Point *getSelectedCentroids();
         Kluster *getClusters();
+        void kickstartGPU();
 };
 
 

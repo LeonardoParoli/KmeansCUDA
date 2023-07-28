@@ -49,3 +49,8 @@ void KmeansParallelCUDASolver::solve(bool printConsole) {
 Point *KmeansParallelCUDASolver::getSelectedCentroids() {
     return selectedCentroids;
 }
+
+void KmeansParallelCUDASolver::kickstartGPU() {
+    kickstartGPUCUDA();
+}
+
