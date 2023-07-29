@@ -35,7 +35,7 @@ void KmeansParallelCUDASolver::solve(bool printConsole) {
     int gridSize = (numPoints + blockSize - 1) / blockSize;
 
     //Computing Max SSE
-    float maxSSE = 0;
+    double maxSSE = 0;
     calculateMaxSSE(points, selectedCentroids, numPoints,numClusters,gridSize,blockSize,maxSSE);
     maxSSE= maxSSE/numPoints;
     if (printConsole) {

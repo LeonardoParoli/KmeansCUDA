@@ -7,10 +7,10 @@
 #include <cuda_runtime.h>
 
 Kluster* kmeansCycle(Point* points,int numPoints, Point* selectedCentroids, int numClusters, float maxSSE, bool printConsole);
-void calculateMaxSSE( Point* points,Point* selectedCentroids, int numPoints, int numClusters, int numBlocks, int threadsPerBlock, float& maxSSE);
+void calculateMaxSSE( Point* points,Point* selectedCentroids, int numPoints, int numClusters, int numBlocks, int threadsPerBlock, double& maxSSE);
 void kickstartGPUCUDA();
 
-__global__ void CUDAcalculateMaxSSE(Point* d_points, Point* d_currentCentroids, float* d_maxSSE, int numPoints, int numClusters);
+__global__ void CUDAcalculateMaxSSE(Point* d_points, Point* d_currentCentroids, double* d_maxSSE, int numPoints, int numClusters);
 __global__ void assignPointsToClusters(Point* points, int numPoints, int numClusters, Point* d_currentCentroids, int* d_assignment);
 __global__ void calculateSSEKernel(Point* points, int numPoints, int* assignments, Point* newCentroids, double* currentSSE);
 __global__ void calculateClusterSizesKernel(int numPoints, const int* assignments, int* clusterSizes);

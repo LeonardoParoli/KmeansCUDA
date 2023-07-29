@@ -9,7 +9,7 @@
 #include "ParallelCUDA/KmeansParallelCUDASolver.h"
 
 int main(){
-    int numPoints = 1000;
+    int numPoints = 100000;
     int numClusters = 15;
     double coordinateRange = 1000;
     double clusterRadius = 250;
