@@ -13,7 +13,6 @@ void kickstartGPUCUDA();
 __global__ void CUDAcalculateMaxSSE(Point* d_points, Point* d_currentCentroids, double* d_maxSSE, int numPoints, int numClusters);
 __global__ void assignPointsToClusters(Point* points, int numPoints, int numClusters, Point* d_currentCentroids, int* d_assignment);
 __global__ void calculateSSEKernel(Point* points, int numPoints, int* assignments, Point* newCentroids, double* currentSSE);
-__global__ void calculateClusterSizesKernel(int numPoints, const int* assignments, int* clusterSizes);
 __global__ void calculateNewCentroidsKernel(int numPoints, Point* points, const int* assignments, Point* newCentroids, int* clusterSizes);
 __global__ void calculateFinalCentroidsKernel(Point* newCentroids, const int* clusterSizes, int numClusters);
 __global__ void vectorAdd(int* a, int* b, int* c, int n);

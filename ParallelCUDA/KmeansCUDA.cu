@@ -49,13 +49,87 @@ __global__ void CUDAcalculateMaxSSE(Point* d_points, Point* d_currentCentroids, 
             distanceToCentroid = sqrt(distanceToCentroid);
             minDistance = fmin(minDistance, distanceToCentroid);
         }
-
         // Accumulate the SSE for this data point
         sse += minDistance * minDistance;
     }
     atomicAdd(d_maxSSE, sse);
 }
 
+__host__ Kluster* kmeansCycle(Point* points,int numPoints,Point* selectedCentroids, int numClusters, float maxSSE, bool printConsole) {
+    //CUDA parameters:
+    int blockSize=256;
+    int gridSize = (numPoints + blockSize - 1) / blockSize;
+
+    Point* d_points;
+    Point* d_currentCentroids;
+    CUDA_CHECK_ERROR(cudaMalloc((void **) &d_points, numPoints * sizeof(Point)));
+    CUDA_CHECK_ERROR(cudaMalloc((void **) &d_currentCentroids, numClusters * sizeof(Point)));
+    CUDA_CHECK_ERROR(cudaMemcpy(d_points, points, numPoints * sizeof(Point), cudaMemcpyHostToDevice));
+    CUDA_CHECK_ERROR(cudaMemcpy(d_currentCentroids, selectedCentroids, numClusters * sizeof(Point), cudaMemcpyHostToDevice));
+
+    float currentSSE=maxSSE;
+    float previousSSE = 1e20;
+    int iteration = 0;
+    int *d_assignments;
+    CUDA_CHECK_ERROR(cudaMalloc((void **) &d_assignments, numPoints * sizeof(int)));
+    double* d_currentSSE;
+    CUDA_CHECK_ERROR(cudaMalloc((void**)&d_currentSSE, sizeof(double)));
+    int* d_clusterSizes;
+    CUDA_CHECK_ERROR(cudaMalloc((void**)&d_clusterSizes, numClusters * sizeof(int)));
+    while ((previousSSE - currentSSE) >= 0.01 && iteration < 10000) {
+        previousSSE = currentSSE;
+
+        //assigning points to cluster
+        size_t sharedMemorySize = blockSize * sizeof(Point);
+        assignPointsToClusters<<<gridSize, blockSize, sharedMemorySize>>>(d_points, numPoints, numClusters, d_currentCentroids, d_assignments);
+
+        //updating centroids
+        CUDA_CHECK_ERROR(cudaMemset(d_clusterSizes, 0, numClusters * sizeof(int)));
+        calculateNewCentroidsKernel<<<gridSize, blockSize>>>(numPoints, d_points, d_assignments, d_currentCentroids, d_clusterSizes);
+        calculateFinalCentroidsKernel<<<gridSize, blockSize>>>(d_currentCentroids, d_clusterSizes, numClusters);
+
+        //Update CurrentSSE
+        currentSSE = 0.0;
+        double hostSSE = 0.0;
+        CUDA_CHECK_ERROR(cudaMemcpy(d_currentSSE, &hostSSE, sizeof(double), cudaMemcpyHostToDevice));
+        calculateSSEKernel<<<gridSize, blockSize>>>(d_points, numPoints, d_assignments, d_currentCentroids, d_currentSSE);
+        CUDA_CHECK_ERROR(cudaMemcpy(&hostSSE, d_currentSSE, sizeof(double), cudaMemcpyDeviceToHost));
+        currentSSE = hostSSE/numPoints;
+        if(printConsole){
+            std::cout <<"Current SSE = " << currentSSE << "" << std::endl;
+        }
+        //update iteration
+        iteration++;
+    }
+
+    //saving results
+    CUDA_CHECK_ERROR(cudaFree(d_points));
+    CUDA_CHECK_ERROR(cudaFree(d_currentSSE));
+    CUDA_CHECK_ERROR(cudaFree(d_clusterSizes));
+    auto *newCentroids = new Point[numClusters];
+    CUDA_CHECK_ERROR(cudaMemcpy(newCentroids, d_currentCentroids, numClusters * sizeof(Point), cudaMemcpyDeviceToHost));
+    CUDA_CHECK_ERROR(cudaFree(d_currentCentroids));
+    int *assignments = new int[numPoints];
+    CUDA_CHECK_ERROR(cudaMemcpy(assignments, d_assignments, numPoints * sizeof(int), cudaMemcpyDeviceToHost));
+    CUDA_CHECK_ERROR(cudaFree(d_assignments));
+
+    //saving iteration on Klusters
+    auto * finalClusters = new Kluster[numClusters];
+    for(int j=0; j<numClusters; j++){
+        finalClusters[j] = Kluster();
+    }
+    for(int i = 0; i < numPoints; i++){
+        finalClusters[assignments[i]].addPoint(&points[i]);
+    }
+    for (int i = 0; i < numClusters; i++) {
+        finalClusters[i].setCentroid(&newCentroids[i]);
+    }
+
+    delete[] assignments;
+    return finalClusters;
+}
+
+/*
 __host__ Kluster* kmeansCycle(Point* points,int numPoints,Point* selectedCentroids, int numClusters, float maxSSE, bool printConsole) {
     //CUDA parameters:
     int blockSize=256;
@@ -100,7 +174,6 @@ __host__ Kluster* kmeansCycle(Point* points,int numPoints,Point* selectedCentroi
         int* d_clusterSizes;
         CUDA_CHECK_ERROR(cudaMalloc((void**)&d_clusterSizes, numClusters * sizeof(int)));
         CUDA_CHECK_ERROR(cudaMemcpy(d_clusterSizes, clusterSizes, numClusters * sizeof(int), cudaMemcpyHostToDevice));
-        calculateClusterSizesKernel<<<gridSize, blockSize>>>(numPoints, d_assignments, d_clusterSizes);
         calculateNewCentroidsKernel<<<gridSize, blockSize>>>(numPoints, d_points, d_assignments, d_currentCentroids, d_clusterSizes);
         calculateFinalCentroidsKernel<<<gridSize, blockSize>>>(d_currentCentroids, d_clusterSizes, numClusters);
         CUDA_CHECK_ERROR(cudaMemcpy(clusterSizes, d_clusterSizes, numClusters * sizeof(int), cudaMemcpyDeviceToHost));
@@ -138,13 +211,21 @@ __host__ Kluster* kmeansCycle(Point* points,int numPoints,Point* selectedCentroi
 
     return finalClusters;
 }
+*/
 
 __global__ void assignPointsToClusters(Point* d_points, int numPoints, int numClusters, Point* d_currentCentroids, int* d_assignments) {
+    extern __shared__ Point sharedPoints[];
+
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = gridDim.x * blockDim.x;
 
+    // Load data into shared memory
     for (int i = tid; i < numPoints; i += stride) {
-        Point point = d_points[i];
+        sharedPoints[threadIdx.x] = d_points[i];
+        __syncthreads();
+
+        // Perform calculations using sharedPoints
+        Point point = sharedPoints[threadIdx.x];
         double minDistance = DBL_MAX;
         int nearestCluster = 0;
 
@@ -162,12 +243,12 @@ __global__ void assignPointsToClusters(Point* d_points, int numPoints, int numCl
         }
 
         d_assignments[i] = nearestCluster;
+        __syncthreads();
     }
 }
 
 __global__ void calculateSSEKernel(Point* points, int numPoints, int* assignments, Point* newCentroids, double* currentSSE) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
     if (idx < numPoints) {
         int assignment = assignments[idx];
         Point point = points[idx];
@@ -181,13 +262,6 @@ __global__ void calculateSSEKernel(Point* points, int numPoints, int* assignment
     }
 }
 
-__global__ void calculateClusterSizesKernel(int numPoints, const int* assignments, int* clusterSizes) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < numPoints) {
-        atomicAdd(&clusterSizes[assignments[idx]], 1);
-    }
-}
-
 __global__ void calculateNewCentroidsKernel(int numPoints, Point* points, const int* assignments, Point* newCentroids, int* clusterSizes) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < numPoints) {
@@ -195,6 +269,7 @@ __global__ void calculateNewCentroidsKernel(int numPoints, Point* points, const 
         atomicAdd(&newCentroids[assignment].x, points[idx].x);
         atomicAdd(&newCentroids[assignment].y, points[idx].y);
         atomicAdd(&newCentroids[assignment].z, points[idx].z);
+        atomicAdd(&clusterSizes[assignments[idx]], 1);
     }
 }
 
