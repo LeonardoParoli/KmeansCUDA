@@ -10,11 +10,11 @@
 
 int main(){
     int numPoints = 10000;
-    int numClusters = 40;
+    int numClusters = 20;
     double coordinateRange = 1000;
     double clusterRadius = 250;
     bool printResults = true;
-    bool printConsole = false;
+    bool printConsole = true;
     bool parallelCUDA = true;
 
     //CUDA parameters

@@ -34,16 +34,23 @@ void KmeansParallelCUDASolver::solve(bool printConsole) {
     int blockSize = 256;
     int gridSize = (numPoints + blockSize - 1) / blockSize;
 
+    //transforming points from AoS to SoA
+    Points soaPoints = transformAoStoSoA(points,numPoints, gridSize, blockSize);
+
     //Computing Max SSE
     double maxSSE = 0;
-    calculateMaxSSE(points, selectedCentroids, numPoints,numClusters,gridSize,blockSize,maxSSE);
+    // AoS method -> improved by calculateMAXSSE_SOA
+    //calculateMaxSSE(points, selectedCentroids, numPoints,numClusters,gridSize,blockSize,maxSSE);
+    calculateMaxSSE_SOA(soaPoints, selectedCentroids, numPoints,numClusters,gridSize,blockSize,maxSSE);
     maxSSE= maxSSE/numPoints;
     if (printConsole) {
         std::cout << "Max SSE = " << maxSSE << "" << std::endl;
     }
 
     //Starting Kmeans clustering
-    clusters = kmeansCycle(points,numPoints,selectedCentroids,numClusters,maxSSE,printConsole);
+    //Aos method -> improved by KmeansCycle_SOA
+    //clusters = kmeansCycle(points,numPoints,selectedCentroids,numClusters,maxSSE,printConsole);
+    clusters = kmeansCycle_SOA(soaPoints,numPoints,selectedCentroids,numClusters,maxSSE,printConsole);
 }
 
 Point *KmeansParallelCUDASolver::getSelectedCentroids() {

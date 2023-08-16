@@ -29,4 +29,9 @@ struct Point{
     };
 };
 
+struct Points {
+    double *x;
+    double *y;
+    double *z;
+};
 #endif //KMEANSSEQUENTIAL_POINT_H
