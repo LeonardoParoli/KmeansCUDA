@@ -12,7 +12,8 @@ Kluster* kmeansCycle_SOA(Points soaPoints,int numPoints, Point* selectedCentroid
 
 __global__ void transformAoaToSoa(const Point* d_aoaPoints, int numPoints, Points d_soaPoints);
 __global__ void CUDAcalculateMaxSSE_SOA(Points d_soaPoints, Point* d_currentCentroids, double* d_maxSSE, int numPoints, int numClusters);
-__global__ void assignPointsToClusters_SOA(const double* d_x, const double* d_y, const double* d_z, int numPoints, int numClusters, const Point* d_currentCentroids, int* d_assignments);
+__global__ void assignPointsToClusters_SOA(Points d_soaPoints, int numPoints, int numClusters, const Point* d_currentCentroids, int* d_assignments);
+    //__global__ void assignPointsToClusters_SOA(const double* d_x, const double* d_y, const double* d_z, int numPoints, int numClusters, const Point* d_currentCentroids, int* d_assignments);
 //__global__ void assignPointsToClusters_SOA(Points soaPoints, int numPoints, int numClusters, Point* d_currentCentroids, int* d_assignment);
 __global__ void calculateSSEKernel_SOA(Points soaPoints, int numPoints, const int* assignments, Point* newCentroids, double* currentSSE);
 __global__ void calculateNewCentroidsKernel_SOA(int numPoints, Points soaPoints, const int* assignments, Point* newCentroids, int* clusterSizes);

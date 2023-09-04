@@ -6,15 +6,12 @@
 Point *KmeansParallelCUDASolver::getPoints() {
     return points;
 }
-
 Kluster *KmeansParallelCUDASolver::getClusters() {
     return clusters;
 }
-
 KmeansParallelCUDASolver::~KmeansParallelCUDASolver() {
     delete[] clusters;
 }
-
 KmeansParallelCUDASolver::KmeansParallelCUDASolver(Point* workPoints, int numPoints, int numClusters, Point *selectedCentroids) {
     this->points= workPoints;
     this->numPoints= numPoints;

@@ -9,12 +9,12 @@
 #include "ParallelCUDA/KmeansParallelCUDASolver.h"
 
 int main(){
-    int numPoints = 10000;
+    int numPoints = 50000;
     int numClusters = 20;
     double coordinateRange = 1000;
     double clusterRadius = 250;
     bool printResults = true;
-    bool printConsole = true;
+    bool printConsole = false;
     bool parallelCUDA = true;
 
     //CUDA parameters
